@@ -27,6 +27,12 @@ typedef struct {
 void Encoder_Init(Encoder_t* encoder, TIM_HandleTypeDef* htim);
 
 /**
+ * @brief Zera o contador físico do encoder e sincroniza a referência interna.
+ * @param encoder Ponteiro para a estrutura do encoder.
+ */
+void Encoder_ResetZero(Encoder_t* encoder);
+
+/**
  * @brief Lê o registrador de hardware, calcula o delta de pulsos com sinal e atualiza a referência.
  * @param encoder Ponteiro para a estrutura do encoder.
  * @return int32_t Variação de pulsos com sinal no último ciclo (Positivo = Avanço, Negativo =

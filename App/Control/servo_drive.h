@@ -2,11 +2,11 @@
  * @file servo_drive.h
  * @brief API unificada do Servo Drive — controle de motor como servo completo.
  * @details Compõe AxisKinematics (feedback), HBridge (atuador), PID (controle)
- *          e MotionAlgorithm (planejamento de trajetória) em uma interface
+ *          e um planejador de trajetória trapezoidal interno em uma interface
  *          simples de alto nível com três modos de operação:
  *          - IDLE:      motor desligado.
  *          - VELOCITY:  controle direto de velocidade (jog).
- *          - ALGORITHM: controle por algoritmo de movimento (posição ou perfil).
+ *          - MOVE:      move para posição alvo com perfil unificado.
  *
  *          A função Servo_Update() deve ser chamada na ISR do Timer de controle
  *          (1 kHz). Ela executa: leitura do encoder → atualização da cinemática →
@@ -18,7 +18,6 @@
 
 #include <stdbool.h>
 
-#include "Algorithms/motion_algorithm.h"
 #include "Algorithms/pid.h"
 #include "Domain/axis_kinematics.h"
 #include "Drivers/hbridge.h"
@@ -31,8 +30,27 @@
 typedef enum {
     SERVO_MODE_IDLE = 0,  /**< Motor desenergizado, saída em 0 */
     SERVO_MODE_VELOCITY,  /**< Controle direto de velocidade (jog manual) */
-    SERVO_MODE_ALGORITHM, /**< Controle por algoritmo de movimento injetável */
+    SERVO_MODE_MOVE,      /**< Movimento para posição alvo com perfil unificado */
 } ServoMode_t;
+
+/**
+ * @brief Estado interno do planejador de trajetória (trapezoidal ou homing).
+ */
+typedef struct {
+    float target_mm;       /**< Posição alvo (mm) */
+    float start_pos_mm;    /**< Posição inicial no momento do start (mm) */
+    float elapsed_s;       /**< Tempo decorrido desde o start (s) */
+    float max_vel_mm_s;    /**< Velocidade máxima configurada (0 = homing) */
+    float max_accel_mm_s2; /**< Aceleração máxima (0 = rampa default) */
+    float max_decel_mm_s2; /**< Desaceleração máxima (0 = rampa default) */
+    float accel_rate;      /**< Taxa de aceleração efetiva (mm/s²) */
+    float decel_rate;      /**< Taxa de desaceleração efetiva (mm/s²) */
+    float v_peak;          /**< Velocidade de pico real (≤ max_vel, mm/s) */
+    float t_accel_end;     /**< Fim da fase de aceleração (s) */
+    float t_decel_start;   /**< Início da fase de desaceleração (s) */
+    float t_total;         /**< Duração total do perfil (s) */
+    bool   active;         /**< true se o plano está ativo */
+} MovePlan_t;
 
 /**
  * @brief Estrutura principal do Servo Drive (composição de todas as camadas).
@@ -52,17 +70,13 @@ typedef struct {
     float duty_max;     /**< Duty cycle máximo (0.0 a 1.0). Default: 1.0 */
 
     // -- Estado operacional --
-    ServoMode_t        mode;                /**< Modo atual */
-    float              velocity_sp_mm_s;    /**< Setpoint do modo VELOCITY */
-    MotionAlgorithm_t* active_alg;          /**< Algoritmo ativo no modo ALGORITHM */
-    float              algorithm_target_mm; /**< Alvo do algoritmo ativo (p/ auto-hold) */
-    bool               alg_done;            /**< true se o algoritmo reportou done */
+    ServoMode_t mode;             /**< Modo atual */
+    float       velocity_sp_mm_s; /**< Setpoint do modo VELOCITY */
 
-    // -- Algoritmos internos (pré-instanciados para conveniência) --
-    DirectAlgContext_t      direct_ctx;
-    TrapezoidalAlgContext_t trapezoidal_ctx;
-    MotionAlgorithm_t       direct_alg;
-    MotionAlgorithm_t       trapezoidal_alg;
+    // -- Planejador de trajetória --
+    MovePlan_t plan;           /**< Estado da trajetória ativa (modo MOVE) */
+    float      hold_target_mm; /**< Alvo para auto-hold após conclusão da trajetória */
+    bool       move_done;      /**< true quando a trajetória concluiu (tempo ou tolerância) */
 
 } ServoDrive_t;
 
@@ -126,38 +140,26 @@ void Servo_SetIdle(ServoDrive_t* servo);
 void Servo_SetVelocity(ServoDrive_t* servo, float vel_mm_s);
 
 /**
- * @brief Move o eixo diretamente para uma posição alvo e mantém (hold).
- * @details Utiliza internamente o algoritmo Direct. A velocidade de aproximação
- *          é proporcional ao erro (pos_gain) e limitada por max_velocity.
- * @param servo    Ponteiro para o Servo Drive.
- * @param target_mm Posição alvo em mm.
+ * @brief Move o eixo para uma posição alvo com perfil de velocidade unificado.
+ * @details Comportamento definido pelos parâmetros (0 = sem limite/sentinela):
+ *
+ *          | max_vel | max_accel | max_decel | Modo                                           |
+ *          |---------|-----------|-----------|-------------------------------------------------|
+ *          | 0       | 0         | 0         | **Homing**: P-controller, vai o mais rápido que o hardware permite |
+ *          | >0      | 0         | 0         | **Velocidade constante**: trapezoidal com rampas default de 50 ms |
+ *          | >0      | >0        | >0        | **Trapezoidal completo**: aceleração e desaceleração configuráveis |
+ *
+ *          Ao concluir a trajetória, o servo mantém hold na posição alvo
+ *          automaticamente (P-controller com clamp de max_velocity).
+ *
+ * @param servo          Ponteiro para o Servo Drive.
+ * @param target_mm      Posição alvo em mm.
+ * @param max_vel_mm_s   Velocidade máxima em mm/s (0 = sem limite/homing).
+ * @param max_accel_mm_s2 Aceleração máxima em mm/s² (0 = rampa default de 50 ms).
+ * @param max_decel_mm_s2 Desaceleração máxima em mm/s² (0 = rampa default de 50 ms).
  */
-void Servo_MoveTo(ServoDrive_t* servo, float target_mm);
-
-/**
- * @brief Move o eixo seguindo um perfil trapezoidal de velocidade.
- * @details Acelera até cruise_vel em ramp_up_s, mantém cruzeiro e desacelera
- *          em ramp_down_s, parando exatamente no alvo. Se a distância for
- *          curta demais, reduz automaticamente a velocidade de pico (triangular).
- * @param servo       Ponteiro para o Servo Drive.
- * @param target_mm   Posição alvo em mm.
- * @param cruise_vel  Velocidade de cruzeiro em mm/s.
- * @param ramp_up_s   Tempo de rampa de aceleração em segundos.
- * @param ramp_down_s Tempo de rampa de desaceleração em segundos.
- */
-void Servo_MoveProfile(ServoDrive_t* servo, float target_mm, float cruise_vel, float ramp_up_s,
-                       float ramp_down_s);
-
-/**
- * @brief Injeta um algoritmo de movimento customizado.
- * @details O algoritmo será iniciado com start() e executado a cada Update.
- *          Quando o algoritmo reportar done = true, o servo volta automaticamente
- *          para hold na posição alvo (comportamento Direct).
- * @param servo  Ponteiro para o Servo Drive.
- * @param alg    Ponteiro para a vtable do algoritmo (já inicializado).
- * @param target_mm Posição alvo final (usada para hold após done).
- */
-void Servo_RunAlgorithm(ServoDrive_t* servo, MotionAlgorithm_t* alg, float target_mm);
+void Servo_Move(ServoDrive_t* servo, float target_mm, float max_vel_mm_s, float max_accel_mm_s2,
+                float max_decel_mm_s2);
 
 // ============================================================================
 // API DE CICLO DE CONTROLE (ISR)
@@ -166,7 +168,7 @@ void Servo_RunAlgorithm(ServoDrive_t* servo, MotionAlgorithm_t* alg, float targe
 /**
  * @brief Executa um ciclo completo de controle. CHAMAR NA ISR DO TIMER (1 kHz).
  * @details Ordem interna: leitura do encoder → atualização cinemática →
- *          avaliação do algoritmo ativo → malha de velocidade → saída PWM.
+ *          avaliação do planejador ativo → malha de velocidade → saída PWM.
  * @param servo Ponteiro para o Servo Drive.
  * @param dt_s  Intervalo de amostragem em segundos (tipicamente 0.001f).
  */
@@ -183,9 +185,9 @@ void Servo_Update(ServoDrive_t* servo, float dt_s);
 void Servo_EmergencyStop(ServoDrive_t* servo);
 
 /**
- * @brief Verifica se o algoritmo ativo já concluiu seu objetivo.
+ * @brief Verifica se o movimento atual já concluiu seu objetivo.
  * @param servo Ponteiro para o Servo Drive.
- * @return true se o algoritmo reportou done (ou modo IDLE/VELOCITY).
+ * @return true no modo IDLE; false no modo VELOCITY; no modo MOVE retorna move_done.
  */
 bool Servo_IsDone(const ServoDrive_t* servo);
 

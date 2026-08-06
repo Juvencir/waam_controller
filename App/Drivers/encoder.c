@@ -12,6 +12,13 @@ void Encoder_Init(Encoder_t* encoder, TIM_HandleTypeDef* htim) {
     HAL_TIM_Encoder_Start(encoder->htim, TIM_CHANNEL_ALL);
 }
 
+void Encoder_ResetZero(Encoder_t* encoder) {
+    if (encoder == NULL || encoder->htim == NULL) return;
+
+    __HAL_TIM_SET_COUNTER(encoder->htim, 0);
+    encoder->last_cnt = 0;
+}
+
 int32_t Encoder_UpdateDelta(Encoder_t* encoder) {
     // Capture atômico do registrador CNT (32 bits sem sinal)
     uint32_t current_cnt = __HAL_TIM_GET_COUNTER(encoder->htim);
