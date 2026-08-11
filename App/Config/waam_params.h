@@ -32,8 +32,8 @@
 #define WAAM_SERVO_VEL_FF_SCALE 0.8f
 #define WAAM_SERVO_VEL_FF ((1.0f / WAAM_MAX_TRAVEL_SPEED_MM_S) * WAAM_SERVO_VEL_FF_SCALE)
 
-#define WAAM_SERVO_DUTY_MAX 1.0f    /**< Duty cycle máximo (0.0–1.0) */
-#define WAAM_SERVO_EPS_MM 0.1f      /**< Tolerância de posição para chegada (mm) */
+#define WAAM_SERVO_DUTY_MAX 1.0f       /**< Duty cycle máximo (0.0–1.0) */
+#define WAAM_SERVO_EPS_MM 0.1f         /**< Tolerância de posição para chegada (mm) */
 #define WAAM_MOVE_DEFAULT_RAMP_S 0.05f /**< Rampa padrão quando max_accel/max_decel = 0 (s) */
 
 #endif  // WAAM_PARAMS_H

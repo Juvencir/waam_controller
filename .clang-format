@@ -10,3 +10,7 @@ AlignConsecutiveAssignments: true
 AlignConsecutiveDeclarations: true
 
 AllowShortFunctionsOnASingleLine: Inline
+
+InsertNewlineAtEOF: false
+
+KeepEmptyLinesAtEOF: false

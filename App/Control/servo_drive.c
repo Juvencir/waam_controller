@@ -23,8 +23,8 @@
  *          Distâncias curtas caem automaticamente em perfil triangular.
  *          max_accel/decel = 0 usam rampa default de WAAM_MOVE_DEFAULT_RAMP_S.
  */
-static void plan_init(MovePlan_t* p, float start_mm, float target_mm, float max_vel, float max_accel,
-                      float max_decel, float eps) {
+static void plan_init(MovePlan_t* p, float start_mm, float target_mm, float max_vel,
+                      float max_accel, float max_decel, float eps) {
     p->start_pos_mm    = start_mm;
     p->target_mm       = target_mm;
     p->elapsed_s       = 0.0f;
@@ -71,8 +71,8 @@ static void plan_init(MovePlan_t* p, float start_mm, float target_mm, float max_
         p->t_total       = p->t_decel_start + (max_vel / a_dec);
     } else {
         // Perfil triangular (sem cruzeiro)
-        float a_sum   = a_acc + a_dec;
-        p->v_peak     = sqrtf(2.0f * abs_d * a_acc * a_dec / a_sum);
+        float a_sum      = a_acc + a_dec;
+        p->v_peak        = sqrtf(2.0f * abs_d * a_acc * a_dec / a_sum);
         p->t_accel_end   = p->v_peak / a_acc;
         p->t_decel_start = p->t_accel_end;
         p->t_total       = p->t_accel_end + (p->v_peak / a_dec);

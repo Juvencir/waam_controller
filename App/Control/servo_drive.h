@@ -28,9 +28,9 @@
 
 /** Modos de operação do Servo Drive. */
 typedef enum {
-    SERVO_MODE_IDLE = 0,  /**< Motor desenergizado, saída em 0 */
-    SERVO_MODE_VELOCITY,  /**< Controle direto de velocidade (jog manual) */
-    SERVO_MODE_MOVE,      /**< Movimento para posição alvo com perfil unificado */
+    SERVO_MODE_IDLE = 0, /**< Motor desenergizado, saída em 0 */
+    SERVO_MODE_VELOCITY, /**< Controle direto de velocidade (jog manual) */
+    SERVO_MODE_MOVE,     /**< Movimento para posição alvo com perfil unificado */
 } ServoMode_t;
 
 /**
@@ -49,7 +49,7 @@ typedef struct {
     float t_accel_end;     /**< Fim da fase de aceleração (s) */
     float t_decel_start;   /**< Início da fase de desaceleração (s) */
     float t_total;         /**< Duração total do perfil (s) */
-    bool   active;         /**< true se o plano está ativo */
+    bool  active;          /**< true se o plano está ativo */
 } MovePlan_t;
 
 /**
@@ -143,14 +143,12 @@ void Servo_SetVelocity(ServoDrive_t* servo, float vel_mm_s);
  * @brief Move o eixo para uma posição alvo com perfil de velocidade unificado.
  * @details Comportamento definido pelos parâmetros (0 = sem limite/sentinela):
  *
- *          | max_vel | max_accel | max_decel | Modo                                           |
- *          |---------|-----------|-----------|-------------------------------------------------|
- *          | 0       | 0         | 0         | **Homing**: P-controller, vai o mais rápido que o hardware permite |
- *          | >0      | 0         | 0         | **Velocidade constante**: trapezoidal com rampas default de 50 ms |
- *          | >0      | >0        | >0        | **Trapezoidal completo**: aceleração e desaceleração configuráveis |
+ *  v=0, a=0, d=0: **Homing**: P-controller, vai o mais rápido que o hardware permite
+ *  v>0, a=0, d=0: **Velocidade constante**: trapezoidal com rampas default de 50 ms
+ *  v>0, a>0, d>0: **Trapezoidal completo**: aceleração e desaceleração configuráveis
  *
- *          Ao concluir a trajetória, o servo mantém hold na posição alvo
- *          automaticamente (P-controller com clamp de max_velocity).
+ *  Ao concluir a trajetória, o servo mantém hold na posição alvo
+ *  automaticamente (P-controller com clamp de max_velocity).
  *
  * @param servo          Ponteiro para o Servo Drive.
  * @param target_mm      Posição alvo em mm.

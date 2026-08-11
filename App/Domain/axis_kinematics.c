@@ -36,10 +36,10 @@ void AxisKinematics_ResetZero(AxisKinematics_t* kin) {
     if (kin->encoder_driver != NULL) {
         Encoder_ResetZero(kin->encoder_driver);
     }
-    kin->state.total_pulses = 0;
+    kin->state.total_pulses      = 0;
     kin->state.last_delta_pulses = 0;
-    kin->state.position_mm  = 0.0f;
-    kin->state.velocity_mm_s = 0.0f;
+    kin->state.position_mm       = 0.0f;
+    kin->state.velocity_mm_s     = 0.0f;
     taskEXIT_CRITICAL();
 }
 
